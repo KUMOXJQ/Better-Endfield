@@ -126,6 +126,8 @@ $requiredReleaseFiles = @(
     "BetterEndfield.exe",
     "runtime\BetterEndfield.Host.dll",
     "modules\BetterEndfield.Model.dll",
+    "modules\BetterEndfield.AnimationDebugger.dll",
+    "modules\betterendfield.animation_debugger.module.ini",
     "modules\BetterEndfield.Voice.dll",
     "modules\BetterEndfield.Music.dll",
     "modules\BetterEndfield.UiModule.dll",

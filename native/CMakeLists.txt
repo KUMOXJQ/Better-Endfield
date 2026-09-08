@@ -59,6 +59,48 @@ set_target_properties(BetterEndfield.Model PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${BETTER_ENDFIELD_STAGE_DIR}/modules"
 )
 
+add_library(BetterEndfield.AnimationDebugger SHARED
+    modules/animation_debugger/module.cpp
+    modules/animation_debugger/runtime_reader.cpp
+    modules/animation_debugger/debug_window.cpp
+    modules/animation_debugger/debug_data.cpp
+)
+better_endfield_target_defaults(BetterEndfield.AnimationDebugger)
+target_link_libraries(BetterEndfield.AnimationDebugger PRIVATE comctl32 user32 gdi32)
+set_target_properties(BetterEndfield.AnimationDebugger PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${BETTER_ENDFIELD_STAGE_DIR}/modules"
+    LIBRARY_OUTPUT_DIRECTORY "${BETTER_ENDFIELD_STAGE_DIR}/modules"
+)
+
+add_executable(BetterEndfield.AnimationDebuggerChecks EXCLUDE_FROM_ALL
+    modules/animation_debugger/data_checks.cpp
+    modules/animation_debugger/debug_data.cpp
+)
+better_endfield_target_defaults(BetterEndfield.AnimationDebuggerChecks)
+
+add_executable(BetterEndfield.AnimationDebuggerReaderChecks EXCLUDE_FROM_ALL
+    modules/animation_debugger/reader_checks.cpp
+    modules/animation_debugger/runtime_reader.cpp
+)
+better_endfield_target_defaults(BetterEndfield.AnimationDebuggerReaderChecks)
+
+add_executable(BetterEndfield.AnimationDebuggerWindowChecks EXCLUDE_FROM_ALL
+    modules/animation_debugger/window_checks.cpp
+    modules/animation_debugger/debug_window.cpp
+    modules/animation_debugger/debug_data.cpp
+)
+better_endfield_target_defaults(BetterEndfield.AnimationDebuggerWindowChecks)
+target_link_libraries(BetterEndfield.AnimationDebuggerWindowChecks PRIVATE comctl32 user32 gdi32)
+
+enable_testing()
+add_test(NAME animation_debugger_data COMMAND BetterEndfield.AnimationDebuggerChecks
+    "${CMAKE_CURRENT_BINARY_DIR}/checks/data")
+add_test(NAME animation_debugger_reader COMMAND BetterEndfield.AnimationDebuggerReaderChecks)
+add_test(NAME animation_debugger_window COMMAND BetterEndfield.AnimationDebuggerWindowChecks
+    "${CMAKE_CURRENT_BINARY_DIR}/checks/window")
+set_tests_properties(animation_debugger_data animation_debugger_reader animation_debugger_window
+    PROPERTIES TIMEOUT 30)
+
 add_library(BetterEndfield.Voice SHARED modules/voice/module.cpp)
 better_endfield_target_defaults(BetterEndfield.Voice)
 set_target_properties(BetterEndfield.Voice PROPERTIES
@@ -144,13 +186,15 @@ set_target_properties(BetterEndfield.CombatOverlay PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${BETTER_ENDFIELD_STAGE_DIR}/modules"
 )
 
-add_executable(BetterEndfield.CombatSemanticsTests EXCLUDE_FROM_ALL
-    tests/combat_semantics_tests.cpp
-    modules/combat_stats/combat_semantics.cpp
-    modules/combat_stats/combat_semantics.h
-    modules/combat_stats/rdps_math.h
-)
-better_endfield_target_defaults(BetterEndfield.CombatSemanticsTests)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/combat_semantics_tests.cpp")
+    add_executable(BetterEndfield.CombatSemanticsTests EXCLUDE_FROM_ALL
+        tests/combat_semantics_tests.cpp
+        modules/combat_stats/combat_semantics.cpp
+        modules/combat_stats/combat_semantics.h
+        modules/combat_stats/rdps_math.h
+    )
+    better_endfield_target_defaults(BetterEndfield.CombatSemanticsTests)
+endif()
 
 # Read-only research utility. It is deliberately excluded from the default
 # build and release layout; build the target explicitly when runtime metadata
@@ -262,6 +306,9 @@ add_custom_target(BetterEndfield.Layout ALL
         "${CMAKE_CURRENT_SOURCE_DIR}/modules/model/betterendfield.model.module.ini"
         "${BETTER_ENDFIELD_STAGE_DIR}/modules/betterendfield.model.module.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/modules/animation_debugger/betterendfield.animation_debugger.module.ini"
+        "${BETTER_ENDFIELD_STAGE_DIR}/modules/betterendfield.animation_debugger.module.ini"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/modules/voice/betterendfield.voice.module.ini"
         "${BETTER_ENDFIELD_STAGE_DIR}/modules/betterendfield.voice.module.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -288,6 +335,7 @@ add_custom_target(BetterEndfield.Layout ALL
     DEPENDS
         BetterEndfield.Host
         BetterEndfield.Model
+        BetterEndfield.AnimationDebugger
         BetterEndfield.Voice
         BetterEndfield.Music
         BetterEndfield.UiModule

@@ -20,6 +20,7 @@ BetterEndfield.exe
 
 - `BetterEndfield.Host.dll`：唯一的进程内宿主、动态解析器和 HookBroker。
 - `BetterEndfield.Model.dll`：开屏视觉、登录演员、模型资源和动画功能模块。
+- `BetterEndfield.AnimationDebugger.dll`：默认关闭的实时动画调试、PlayableGraph 观测和会话记录模块；[启用方式与数据说明](docs/ANIMATION_DEBUGGER.md)。
 - `BetterEndfield.Voice.dll`：语音语言、Wwise 媒体和口型功能模块。
 - `BetterEndfield.Music.dll`：OmniMix PCM、Wwise Audio Input 和原游戏音乐回退模块。
 - `BetterEndfield.CombatStats.dll`：伤害数字隐藏、战斗伤害统计、快捷键会话和本地结果模块。
