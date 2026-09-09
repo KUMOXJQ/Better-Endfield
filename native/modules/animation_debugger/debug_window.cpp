@@ -56,6 +56,7 @@ public:
     const double display_origin = ClockSeconds();
     size_t event_count = 0;
     uint64_t starting_drops = 0;
+    unsigned configuration_revision = 0;
     std::wstring notice = L"就绪。Ctrl+Alt+F8 最小化/恢复。选择目标后开始记录。";
     HFONT font = nullptr;
     bool visible = true;
@@ -84,8 +85,8 @@ public:
         Add(998, L"STATIC", L"采样 Hz / 刷新 Hz / 时长秒 / 容量 MiB", 0, 10, 87, 335, 25);
         Add(SampleHz, L"EDIT", std::to_wstring(channel.sample_hz.load()).c_str(), ES_NUMBER, 350, 82, 62, 26);
         Add(RefreshHz, L"EDIT", std::to_wstring(channel.refresh_hz.load()).c_str(), ES_NUMBER, 420, 82, 62, 26);
-        Add(MaxSeconds, L"EDIT", L"1800", ES_NUMBER, 490, 82, 88, 26);
-        Add(MaxMb, L"EDIT", L"64", ES_NUMBER, 585, 82, 62, 26);
+        Add(MaxSeconds, L"EDIT", std::to_wstring(channel.max_seconds.load()).c_str(), ES_NUMBER, 490, 82, 88, 26);
+        Add(MaxMb, L"EDIT", std::to_wstring(channel.max_mib.load()).c_str(), ES_NUMBER, 585, 82, 62, 26);
         Add(997, L"STATIC", L"历史样本（停止后拖动，左右键逐条）", 0, 10, 119, 345, 25);
         Add(History, TRACKBAR_CLASSW, L"", TBS_HORZ | TBS_AUTOTICKS, 350, 114, 395, 30);
         Add(996, L"STATIC", L"历史角色/Animator/ID", 0, 10, 157, 180, 25);
@@ -102,6 +103,7 @@ public:
         if (visible && !RegisterHotKey(hwnd, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F8)) notice = L"Ctrl+Alt+F8 被占用；可使用任务栏恢复窗口。";
         if (!SetTimer(hwnd, 1, 25, nullptr)) throw std::runtime_error("Cannot start debugger timer");
         channel.window_ready = true;
+        configuration_revision = channel.configuration_revision.load();
     }
     void Layout() {
         RECT rect{}; GetClientRect(hwnd, &rect);
@@ -126,6 +128,11 @@ public:
             t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, GetCurrentProcessId());
         session.Start(id, UtcNow(), channel.sample_hz, Setting(MaxSeconds, 1800, 1, 1800),
             static_cast<size_t>(Setting(MaxMb, 64, 1, 256)) * 1024 * 1024);
+        session.initial_mode = channel.target_id ? "fixed" : "follow";
+        session.initial_target_id = channel.target_id ? std::to_string(channel.target_id.load()) : "";
+        session.game_version = latest.game_version;
+        session.refresh_hz = channel.refresh_hz;
+        channel.recording_hz = session.sample_hz;
         channel.recording = true; exported = false; history = false; event_count = 0;
         starting_drops = channel.dropped.load();
         SendMessageW(controls[EventList], LB_RESETCONTENT, 0, 0);
@@ -244,6 +251,13 @@ public:
     }
     void Tick() {
         const double now = ClockSeconds();
+        if (configuration_revision != channel.configuration_revision.load()) {
+            configuration_revision = channel.configuration_revision.load();
+            SetWindowTextW(controls[SampleHz], std::to_wstring(channel.sample_hz.load()).c_str());
+            SetWindowTextW(controls[RefreshHz], std::to_wstring(channel.refresh_hz.load()).c_str());
+            SetWindowTextW(controls[MaxSeconds], std::to_wstring(channel.max_seconds.load()).c_str());
+            SetWindowTextW(controls[MaxMb], std::to_wstring(channel.max_mib.load()).c_str());
+        }
         ConsumePending();
         if (session.recording && now - std::max(last_received, start) > 0.5) {
             Sample gap; gap.time = now - start; gap.mode = channel.target_id ? "fixed" : "follow";
@@ -271,6 +285,8 @@ public:
             + L" | 秒 " + std::to_wstring(session.recording ? now - start : session.samples.empty() ? 0.0 : session.samples.back().time)
             + L" | 估算 MiB " + std::to_wstring(session.estimated_bytes / (1024 * 1024))
             + L" | 队列丢弃 " + std::to_wstring(channel.dropped.load())
+            + L" | 异常 " + std::to_wstring(session.issue_count)
+            + L" | 实际 Hz " + std::to_wstring(session.ActualSampleHz()).substr(0, 5)
             + L" | " + (history ? L"历史样本" : freeze ? L"显示已冻结" : stale ? L"数据过期" : L"实时")
             + L"\n" + notice;
         SetWindowTextW(controls[Status], status.c_str());

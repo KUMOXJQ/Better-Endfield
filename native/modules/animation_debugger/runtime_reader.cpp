@@ -1,12 +1,24 @@
 #include "runtime_reader.h"
 #include <algorithm>
 #include <cstring>
+#if defined(_MSC_VER)
+#include <Windows.h>
+#endif
 
 namespace BetterEndfield::AnimationDebugger {
 namespace {
 constexpr auto Core = "UnityEngine.CoreModule.dll";
 constexpr auto Anim = "UnityEngine.AnimationModule.dll";
 constexpr auto Play = "UnityEngine.Playables";
+void* InvokeProtected(const BE_HostApiV1* host, const void* method, void* instance, void** args, void** exception, bool& fault) {
+#if defined(_MSC_VER)
+    __try { return host->runtime_invoke(host->context, method, instance, args, exception); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { fault = true; return nullptr; }
+#else
+    (void)fault;
+    return host->runtime_invoke(host->context, method, instance, args, exception);
+#endif
+}
 }
 bool RuntimeReader::MethodAt(const char* key, const char* assembly, const char* ns,
     const char* klass, const char* name, const char* params, const char* result, uint32_t count) {
@@ -22,6 +34,7 @@ bool RuntimeReader::Resolve() {
     ready &= MethodAt("id", Core, "UnityEngine", "Object", "GetInstanceID", nullptr, "System.Int32", 0);
     ready &= MethodAt("alive", Core, "UnityEngine", "Object", "op_Implicit", "UnityEngine.Object", "System.Boolean", 1);
     MethodAt("name", Core, "UnityEngine", "Object", "get_name", nullptr, "System.String", 0);
+    MethodAt("game.version", Core, "UnityEngine", "Application", "get_version", nullptr, "System.String", 0);
     ready &= MethodAt("array.length", "mscorlib.dll", "System", "Array", "get_Length", nullptr, "System.Int32", 0);
     ready &= MethodAt("array.value", "mscorlib.dll", "System", "Array", "GetValue", "System.Int32", "System.Object", 1);
     MethodAt("player", "Gameplay.Beyond.dll", "Beyond.Gameplay", "GameUtil", "get_playerTrans", nullptr, "UnityEngine.Transform", 0);
@@ -85,10 +98,20 @@ void* RuntimeReader::Keep(void* object) {
 }
 void* RuntimeReader::Call(const char* key, void* instance, void** args) {
     const auto it = methods_.find(key);
-    if (it == methods_.end() || !it->second.value.method_info) { ++failures_; return nullptr; }
+    if (it == methods_.end() || !it->second.value.method_info) {
+        ++failures_; read_issues_.insert(std::string(key) + ": unsupported method"); return nullptr;
+    }
+    if (it->second.faulted) {
+        ++failures_; read_issues_.insert(std::string(key) + ": disabled after native fault"); return nullptr;
+    }
     void* exception = nullptr;
-    void* result = host_->runtime_invoke(host_->context, it->second.value.method_info, instance, args, &exception);
-    if (exception) { ++failures_; return nullptr; }
+    bool fault = false;
+    void* result = InvokeProtected(host_, it->second.value.method_info, instance, args, &exception, fault);
+    if (fault) {
+        it->second.faulted = true; ++failures_;
+        read_issues_.insert(std::string(key) + ": native fault; this method disabled"); return nullptr;
+    }
+    if (exception) { ++failures_; read_issues_.insert(std::string(key) + ": managed exception"); return nullptr; }
     return Keep(result);
 }
 void* RuntimeReader::Raw(void* boxed) const { return boxed ? host_->object_unbox(host_->context, boxed) : nullptr; }
@@ -260,8 +283,9 @@ void RuntimeReader::ReadGraph(void* animator, Sample& sample) {
 }
 Sample RuntimeReader::Capture(double time, int fixed_id, bool refresh_targets) {
     for (auto root : temporary_roots_) host_->gchandle_free(host_->context, root);
-    temporary_roots_.clear(); failures_ = 0;
+    temporary_roots_.clear(); failures_ = 0; read_issues_.clear();
     Sample sample; sample.time = time; sample.mode = fixed_id ? "fixed" : "follow";
+    sample.game_version = Text(Call("game.version"));
     if (refresh_targets) RefreshTargets();
     if (targets_truncated_) sample.issues.push_back("Animator discovery truncated to first 256 targets");
     if (fixed_id != fixed_id_) {
@@ -301,6 +325,7 @@ Sample RuntimeReader::Capture(double time, int fixed_id, bool refresh_targets) {
         } else sample.status = "target_lost";
     } else if (fixed_id) sample.status = "target_lost";
     if (failures_) sample.issues.push_back("Unavailable/failed runtime reads: " + std::to_string(failures_));
+    sample.issues.insert(sample.issues.end(), read_issues_.begin(), read_issues_.end());
     std::sort(sample.issues.begin(), sample.issues.end());
     sample.issues.erase(std::unique(sample.issues.begin(), sample.issues.end()), sample.issues.end());
     for (auto root : temporary_roots_) host_->gchandle_free(host_->context, root);

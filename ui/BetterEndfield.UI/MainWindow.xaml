@@ -1457,6 +1457,21 @@
                                 </StackPanel>
 
                                 <Border Style="{StaticResource SectionStyle}">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock x:Name="AnimationDebuggerTitle" Style="{StaticResource SectionTitleStyle}" Text="动画调试与记录" />
+                                        <TextBlock x:Name="AnimationDebuggerHint" Style="{StaticResource FieldHintStyle}" Text="保存后在游戏中显示实时调试窗口。首次启用需重启游戏；Ctrl+Alt+F8 最小化或恢复，最小化期间继续记录。" TextWrapping="Wrap" />
+                                        <ToggleSwitch x:Name="AnimationDebuggerToggle" Header="启用动画调试" />
+                                        <controls:WrapPanel HorizontalSpacing="16" VerticalSpacing="12">
+                                            <NumberBox x:Name="AnimationSampleHzBox" Header="采样频率 Hz" Minimum="1" Maximum="120" Value="30" Width="165" SpinButtonPlacementMode="Compact" />
+                                            <NumberBox x:Name="AnimationRefreshHzBox" Header="刷新频率 Hz" Minimum="1" Maximum="30" Value="10" Width="165" SpinButtonPlacementMode="Compact" />
+                                            <NumberBox x:Name="AnimationMaxSecondsBox" Header="最长记录秒数" Minimum="1" Maximum="1800" Value="1800" Width="165" SpinButtonPlacementMode="Compact" />
+                                            <NumberBox x:Name="AnimationMaxMiBBox" Header="记录容量 MiB" Minimum="1" Maximum="256" Value="64" Width="165" SpinButtonPlacementMode="Compact" />
+                                        </controls:WrapPanel>
+                                        <Button x:Name="AnimationRecordsFolderButton" Content="打开动画记录文件夹" Click="OpenAnimationRecordsFolder_Click" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource SectionStyle}">
                                     <StackPanel Spacing="16">
                                         <Grid ColumnSpacing="12">
                                             <Grid.ColumnDefinitions>

@@ -10,6 +10,8 @@ struct DebugChannel {
     std::atomic_bool enabled{false}, stopping{false}, recording{false};
     std::atomic_bool window_ready{false};
     std::atomic_int target_id{0}, sample_hz{30}, refresh_hz{10};
+    std::atomic_int recording_hz{30}, max_seconds{1800}, max_mib{64};
+    std::atomic_uint configuration_revision{0};
     std::atomic<uint64_t> dropped{0};
     std::mutex mutex;
     std::deque<Sample> pending;

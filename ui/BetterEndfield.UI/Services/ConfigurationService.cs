@@ -364,6 +364,7 @@ internal static class ConfigurationService
 
         await EnsureUnicodeProfileEncodingAsync(path);
         string[] lines = await File.ReadAllLinesAsync(path);
+        AnimationDebuggerConfiguration.ReadInto(lines, configuration);
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         bool inSection = false;
         bool cameraSectionPresent = false;

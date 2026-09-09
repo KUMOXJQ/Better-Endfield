@@ -5,6 +5,9 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
+#if defined(_MSC_VER)
+#include <Windows.h>
+#endif
 
 using namespace BetterEndfield::AnimationDebugger;
 namespace {
@@ -22,6 +25,7 @@ struct Fake {
     std::vector<std::unique_ptr<std::string>> fields;
     std::map<uint32_t, void*> roots;
     std::set<std::string> unavailable;
+    std::set<std::string> faults;
     uint32_t next_root = 0;
     Object *all = nullptr, *player = nullptr, *animator = nullptr, *clip = nullptr, *node = nullptr;
     BE_HostApiV1 api{};
@@ -69,7 +73,11 @@ struct Fake {
         };
         api.runtime_invoke = [](void* c, const void* info, void* instance, void** args, void** exception) -> void* {
             auto& f = *static_cast<Fake*>(c); const auto& m = *static_cast<const Method*>(info);
+#if defined(_MSC_VER)
+            if (f.faults.contains(m.name)) RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr);
+#endif
             auto* o = static_cast<Object*>(instance);
+            if (m.klass == "Application") return f.Text("test-client-version");
             if (m.klass == "Object" && m.name == "FindObjectsOfType") return f.all;
             if (m.klass == "Object" && m.name == "op_Implicit") return f.Prop(static_cast<Object*>(args[0]), "alive");
             if (m.klass == "GameUtil") return f.player;
@@ -113,6 +121,7 @@ int main() {
         Check(reader.Resolve(), "required contracts resolve");
         auto s = reader.Capture(1, 0, true);
         Check(s.status == "valid" && s.character == "Pelica", "follow current player");
+        Check(s.game_version == "test-client-version", "runtime application version");
         Check(s.layers.size() == 1 && s.layers[0].current_hash == 123, "state fields through managed getters");
         Check(s.clips.size() == 3 && s.nodes.size() == 3, "Animator and two graph paths are preserved");
         Check(!s.clips[0].time && !s.clips[0].speed, "state time never misrepresented as clip time");
@@ -137,6 +146,16 @@ int main() {
         const auto cyclic = cycle_reader.Capture(0, 0, true);
         Check(cyclic.nodes.size() == 3 && !cyclic.issues.empty(), "graph cycles are bounded");
         cycle_reader.Release();
+#if defined(_MSC_VER)
+        Fake fault; fault.faults.insert("GetSpeed"); RuntimeReader fault_reader(&fault.api);
+        Check(fault_reader.Resolve(), "fault contracts");
+        const auto faulted = fault_reader.Capture(0, 0, true);
+        Check(faulted.status == "valid" && faulted.clips.size() == 3 && faulted.clips[1].time == 2.5
+            && !faulted.clips[1].speed && !faulted.issues.empty(), "one native getter fault preserves other data");
+        const auto after_fault = fault_reader.Capture(1, 0, false);
+        Check(after_fault.status == "valid" && after_fault.clips.size() == 3, "faulted getter remains isolated");
+        fault_reader.Release(); Check(fault.roots.empty(), "fault path releases roots");
+#endif
         Fake missing; missing.unavailable.insert("Animator.GetCurrentAnimatorClipInfo");
         RuntimeReader missing_reader(&missing.api); Check(!missing_reader.Resolve(), "missing core contract rejected");
         std::cout << "Animation debugger reader checks passed\n"; return 0;

@@ -532,6 +532,20 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OpenAnimationRecordsFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string directory = Path.Combine(ConfigurationService.SettingsDirectory, "animation-sessions");
+            Directory.CreateDirectory(directory);
+            OpenWithShell(directory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            ShowStatus(LocalizationService.Instance.IsChinese ? "无法打开动画记录" : "Cannot open animation records", exception.Message, InfoBarSeverity.Error);
+        }
+    }
+
     private void RefreshCombatSessions()
     {
         string directory = Path.Combine(
@@ -2297,6 +2311,11 @@ public sealed partial class MainWindow : Window
             FallbackToNativeMusic = FallbackToNativeMusicToggle.IsOn,
             MusicDiagnostics = MusicDiagnosticsToggle.IsOn,
             CombatStatsEnabled = CombatStatsToggle.IsOn,
+            AnimationDebuggerEnabled = AnimationDebuggerToggle.IsOn,
+            AnimationSampleHz = double.IsFinite(AnimationSampleHzBox.Value) ? (int)Math.Clamp(AnimationSampleHzBox.Value, 1, 120) : 30,
+            AnimationRefreshHz = double.IsFinite(AnimationRefreshHzBox.Value) ? (int)Math.Clamp(AnimationRefreshHzBox.Value, 1, 30) : 10,
+            AnimationMaxSeconds = double.IsFinite(AnimationMaxSecondsBox.Value) ? (int)Math.Clamp(AnimationMaxSecondsBox.Value, 1, 1800) : 1800,
+            AnimationMaxMiB = double.IsFinite(AnimationMaxMiBBox.Value) ? (int)Math.Clamp(AnimationMaxMiBBox.Value, 1, 256) : 64,
             HideDamageNumbers = HideDamageNumbersToggle.IsOn,
             CombatOverlayEnabled = CombatOverlayToggle.IsOn,
             CombatRdpsDisplay = CombatRdpsDisplayToggle.IsOn,
@@ -2367,6 +2386,11 @@ public sealed partial class MainWindow : Window
         FallbackToNativeMusicToggle.IsOn = configuration.FallbackToNativeMusic;
         MusicDiagnosticsToggle.IsOn = configuration.MusicDiagnostics;
         CombatStatsToggle.IsOn = configuration.CombatStatsEnabled;
+        AnimationDebuggerToggle.IsOn = configuration.AnimationDebuggerEnabled;
+        AnimationSampleHzBox.Value = configuration.AnimationSampleHz;
+        AnimationRefreshHzBox.Value = configuration.AnimationRefreshHz;
+        AnimationMaxSecondsBox.Value = configuration.AnimationMaxSeconds;
+        AnimationMaxMiBBox.Value = configuration.AnimationMaxMiB;
         HideDamageNumbersToggle.IsOn = configuration.HideDamageNumbers;
         CombatOverlayToggle.IsOn = configuration.CombatOverlayEnabled;
         CombatRdpsDisplayToggle.IsOn = configuration.CombatRdpsDisplay;
@@ -3476,6 +3500,16 @@ public sealed partial class MainWindow : Window
 
         // Settings Page
         SettingsPageTitleTextBlock.Text = isZh ? "设置" : "Global Settings";
+        AnimationDebuggerTitle.Text = isZh ? "动画调试与记录" : "Animation Debugger";
+        AnimationDebuggerHint.Text = isZh
+            ? "保存后在游戏中显示实时调试窗口。首次启用需重启游戏；Ctrl+Alt+F8 最小化或恢复，最小化期间继续记录。"
+            : "Save to enable the in-game debug window. Restart the game on first use. Ctrl+Alt+F8 minimizes or restores it; recording continues while minimized.";
+        AnimationDebuggerToggle.Header = isZh ? "启用动画调试" : "Enable animation debugger";
+        AnimationSampleHzBox.Header = isZh ? "采样频率 Hz" : "Sample rate (Hz)";
+        AnimationRefreshHzBox.Header = isZh ? "刷新频率 Hz" : "Refresh rate (Hz)";
+        AnimationMaxSecondsBox.Header = isZh ? "最长记录秒数" : "Maximum seconds";
+        AnimationMaxMiBBox.Header = isZh ? "记录容量 MiB" : "Capacity (MiB)";
+        AnimationRecordsFolderButton.Content = isZh ? "打开动画记录文件夹" : "Open animation records";
         SettingsPageDescriptionTextBlock.Text = isZh
             ? "管理运行路径、加载方式、启动参数、外观和桌面入口。"
             : "Configure application paths, loader mode, launch arguments, theme, and shortcuts.";

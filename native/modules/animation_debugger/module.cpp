@@ -1,4 +1,5 @@
 #include "debug_window.h"
+#include "sample_scheduler.h"
 #include <Windows.h>
 #include <algorithm>
 #include <memory>
@@ -18,17 +19,18 @@ using RenderFn = void(BE_CALL*)(const void*);
 RenderFn original = nullptr;
 RenderFn restored_entry = nullptr;
 std::shared_mutex invocation_gate;
-double next_sample = 0, next_discovery = 0;
+SampleScheduler scheduler;
+double next_discovery = 0;
 uint64_t reported_drops = 0;
 std::filesystem::path output_root;
 
 void Capture() {
     const double now = ClockSeconds();
-    if (now < next_sample) return;
-    const int hz = channel.recording ? channel.sample_hz.load() : channel.refresh_hz.load();
-    next_sample = now + 1.0 / std::clamp(hz, 1, 120);
+    const int hz = channel.recording ? channel.recording_hz.load() : channel.refresh_hz.load();
+    if (!scheduler.Due(now, hz)) return;
     const bool discover = now >= next_discovery;
     Sample sample = reader->Capture(now, channel.target_id.load(), discover);
+    sample.capture_ms = (ClockSeconds() - now) * 1000.0;
     if (discover) next_discovery = now + 2.0;
     const uint64_t dropped = channel.dropped.load();
     if (dropped != reported_drops) sample.issues.push_back("Native queue samples dropped: " + std::to_string(dropped - reported_drops));
@@ -112,11 +114,14 @@ BE_Result BE_CALL ConfigurationChanged(const char* configuration) {
         trim(key); trim(value);
         if (key == "enabled") enabled = value == "true" || value == "1" || value == "yes";
         try {
-            if (key == "sample_hz" && !channel.recording) channel.sample_hz = std::clamp(std::stoi(value), 1, 120);
+            if (key == "sample_hz") channel.sample_hz = std::clamp(std::stoi(value), 1, 120);
             if (key == "refresh_hz") channel.refresh_hz = std::clamp(std::stoi(value), 1, 30);
+            if (key == "max_seconds") channel.max_seconds = std::clamp(std::stoi(value), 1, 1800);
+            if (key == "max_mib") channel.max_mib = std::clamp(std::stoi(value), 1, 256);
         } catch (...) {}
     }
     channel.enabled = enabled;
+    ++channel.configuration_revision;
     if (enabled && !window_thread.joinable()) {
         try {
             window_thread = std::thread([] {
@@ -153,7 +158,7 @@ void BE_CALL Shutdown() {
     if (reader) reader->Release();
     reader.reset();
 }
-const BE_ModuleApiV1 api{{ModuleId, "Animation Debugger", "0.1.0", BETTER_ENDFIELD_MODULE_ABI_V1},
+const BE_ModuleApiV1 api{{ModuleId, "Animation Debugger", "0.2.0", BETTER_ENDFIELD_MODULE_ABI_V1},
     Initialize, ConfigurationChanged, Shutdown};
 }
 }

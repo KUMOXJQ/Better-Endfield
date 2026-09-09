@@ -2,6 +2,7 @@
 #include "BetterEndfield/ModuleApi.h"
 #include "debug_data.h"
 #include <map>
+#include <set>
 
 namespace BetterEndfield::AnimationDebugger {
 struct Target { int id = 0; std::string label; };
@@ -15,7 +16,7 @@ public:
     const std::vector<Target>& Targets() const { return targets_; }
     void Release();
 private:
-    struct Method { BE_ResolvedMethodV1 value{}; };
+    struct Method { BE_ResolvedMethodV1 value{}; bool faulted = false; };
     const BE_HostApiV1* host_;
     std::map<std::string, Method> methods_;
     std::map<std::string, BE_ResolvedFieldV1> fields_;
@@ -28,6 +29,7 @@ private:
     int fixed_id_ = 0;
     size_t failures_ = 0;
     bool targets_truncated_ = false;
+    std::set<std::string> read_issues_;
     bool MethodAt(const char* key, const char* assembly, const char* ns, const char* klass,
         const char* name, const char* params, const char* result, uint32_t count);
     void* Keep(void* object);

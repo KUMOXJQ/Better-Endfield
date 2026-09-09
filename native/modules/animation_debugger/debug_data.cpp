@@ -26,7 +26,7 @@ std::string Bool(std::optional<bool> value, const char* missing = "null") {
 }
 size_t Size(const Sample& s) {
     size_t bytes = sizeof(s) + s.target_id.size() + s.character.size() + s.animator.size()
-        + s.mode.size() + s.status.size() + s.graph_id.size() + s.graph_status.size();
+        + s.mode.size() + s.status.size() + s.graph_id.size() + s.graph_status.size() + s.game_version.size();
     for (const auto& c : s.clips) bytes += sizeof(c) + c.id.size() + c.name.size() + c.path.size() + c.source.size() + c.activity.size();
     for (const auto& n : s.nodes) bytes += sizeof(n) + n.id.size() + n.path.size() + n.type.size();
     for (const auto& l : s.layers) bytes += sizeof(l) + l.name.size();
@@ -109,8 +109,21 @@ bool Session::Append(Sample s, const std::string& utc) {
         return false;
     }
     estimated_bytes += bytes + event_bytes;
+    if (game_version.empty() && !s.game_version.empty()) game_version = s.game_version;
+    if (s.capture_ms && std::isfinite(*s.capture_ms) && *s.capture_ms >= 0) {
+        ++runtime_sample_count;
+        if (!first_runtime_time) first_runtime_time = s.time;
+        last_runtime_time = s.time;
+        capture_total_ms += *s.capture_ms;
+        capture_max_ms = std::max(capture_max_ms, *s.capture_ms);
+    }
+    issue_count += s.issues.size();
     samples.push_back(std::move(s));
     return true;
+}
+double Session::ActualSampleHz() const {
+    if (runtime_sample_count < 2 || !first_runtime_time || !last_runtime_time || *last_runtime_time <= *first_runtime_time) return 0;
+    return (runtime_sample_count - 1) / (*last_runtime_time - *first_runtime_time);
 }
 std::string JsonString(const std::string& text) {
     static constexpr char hex[] = "0123456789abcdef";
@@ -127,17 +140,34 @@ std::string CsvString(const std::string& text) {
     for (char ch : text) { if (ch == '"') out += '"'; out += ch; }
     return out + '"';
 }
-std::string ToJson(const Session& session) {
+std::string ToJson(const Session& session, bool include_data) {
     auto out = Stream();
-    out << "{\"schema_version\":1,\"tool_version\":\"0.1.0\",\"game_version\":null,\"session_id\":" << JsonString(session.id)
+    std::vector<double> capture_times;
+    for (const auto& sample : session.samples)
+        if (sample.capture_ms && std::isfinite(*sample.capture_ms) && *sample.capture_ms >= 0) capture_times.push_back(*sample.capture_ms);
+    Number p95;
+    if (!capture_times.empty()) {
+        const size_t index = static_cast<size_t>(std::ceil(capture_times.size() * 0.95)) - 1;
+        std::nth_element(capture_times.begin(), capture_times.begin() + index, capture_times.end());
+        p95 = capture_times[index];
+    }
+    out << "{\"schema_version\":1,\"tool_version\":\"0.2.0\",\"game_version\":" << (session.game_version.empty() ? "null" : JsonString(session.game_version))
+        << ",\"initial_mode\":" << JsonString(session.initial_mode) << ",\"initial_target_id\":" << JsonString(session.initial_target_id)
+        << ",\"refresh_hz\":" << session.refresh_hz << ",\"runtime_sample_count\":" << session.runtime_sample_count
+        << ",\"actual_sample_hz\":" << Num(session.ActualSampleHz()) << ",\"issue_count\":" << session.issue_count
+        << ",\"capture_mean_ms\":" << Num(session.runtime_sample_count ? Number(session.capture_total_ms / session.runtime_sample_count) : Number{})
+        << ",\"capture_max_ms\":" << Num(session.runtime_sample_count ? Number(session.capture_max_ms) : Number{})
+        << ",\"capture_p95_ms\":" << Num(p95) << ",\"sample_count\":" << session.samples.size()
+        << ",\"session_id\":" << JsonString(session.id)
         << ",\"started_utc\":" << JsonString(session.started_utc) << ",\"stopped_utc\":" << JsonString(session.stopped_utc)
         << ",\"recording\":" << (session.recording ? "true" : "false") << ",\"stop_reason\":" << JsonString(session.stop_reason)
         << ",\"sample_hz\":" << session.sample_hz << ",\"max_seconds\":" << session.max_seconds
         << ",\"max_estimated_bytes\":" << session.max_bytes << ",\"time_unit\":\"seconds\",\"samples\":[";
     bool first = true;
-    for (const auto& s : session.samples) {
+    if (include_data) for (const auto& s : session.samples) {
         if (!first) out << ','; first = false;
-        out << "{\"sequence\":" << s.sequence << ",\"time\":" << Num(s.time)
+        out << "{\"sequence\":" << s.sequence << ",\"time\":" << Num(s.time) << ",\"capture_ms\":" << Num(s.capture_ms)
+            << ",\"game_version\":" << (s.game_version.empty() ? "null" : JsonString(s.game_version))
             << ",\"target_id\":" << JsonString(s.target_id) << ",\"character\":" << JsonString(s.character)
             << ",\"animator\":" << JsonString(s.animator) << ",\"mode\":" << JsonString(s.mode)
             << ",\"status\":" << JsonString(s.status) << ",\"animator_speed\":" << Num(s.animator_speed)
@@ -170,7 +200,7 @@ std::string ToJson(const Session& session) {
         out << "]}";
     }
     out << "],\"events\":["; first = true;
-    for (const auto& e : session.events) {
+    if (include_data) for (const auto& e : session.events) {
         if (!first) out << ','; first = false;
         out << "{\"time\":" << Num(e.time) << ",\"kind\":" << JsonString(e.kind) << ",\"detail\":" << JsonString(e.detail) << '}';
     }
@@ -178,14 +208,15 @@ std::string ToJson(const Session& session) {
 }
 std::string SamplesCsv(const Session& session) {
     auto out = Stream();
-    out << "session_id,sequence,time,target_id,character,animator,mode,status,graph_id,graph_status,clip_id,clip_name,path,source,clip_time,length,speed,weight,loop,activity\r\n";
+    out << "session_id,sequence,time,target_id,character,animator,mode,status,graph_id,graph_status,clip_id,clip_name,path,source,clip_time,length,speed,weight,loop,activity,capture_ms\r\n";
     for (const auto& s : session.samples) {
         auto row = [&](const Clip& c) {
             out << CsvString(session.id) << ',' << s.sequence << ',' << Num(s.time, "") << ',' << CsvString(s.target_id)
                 << ',' << CsvString(s.character) << ',' << CsvString(s.animator) << ',' << CsvString(s.mode) << ',' << CsvString(s.status)
                 << ',' << CsvString(s.graph_id) << ',' << CsvString(s.graph_status) << ',' << CsvString(c.id) << ',' << CsvString(c.name)
                 << ',' << CsvString(c.path) << ',' << CsvString(c.source) << ',' << Num(c.time, "") << ',' << Num(c.length, "")
-                << ',' << Num(c.speed, "") << ',' << Num(c.weight, "") << ',' << Bool(c.loop, "") << ',' << CsvString(c.activity) << "\r\n";
+                << ',' << Num(c.speed, "") << ',' << Num(c.weight, "") << ',' << Bool(c.loop, "") << ',' << CsvString(c.activity)
+                << ',' << Num(s.capture_ms, "") << "\r\n";
         };
         if (s.clips.empty()) row(Clip{}); else for (const auto& c : s.clips) row(c);
     }
@@ -206,6 +237,7 @@ std::filesystem::path Export(const Session& session, const std::filesystem::path
         if (n == 9999) throw std::runtime_error("No unused export directory");
     }
     Write(destination / "session.json", ToJson(session));
+    Write(destination / "metadata.json", ToJson(session, false));
     Write(destination / "samples.csv", SamplesCsv(session));
     Write(destination / "events.csv", EventsCsv(session));
     Write(destination / "COMPLETE.txt", "schema_version=1\nAll files written successfully.\n");

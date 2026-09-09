@@ -6,6 +6,11 @@ namespace BetterEndfield.UI.Models;
 
 internal sealed class ModConfiguration
 {
+    public bool AnimationDebuggerEnabled { get; set; }
+    public int AnimationSampleHz { get; set; } = 30;
+    public int AnimationRefreshHz { get; set; } = 10;
+    public int AnimationMaxSeconds { get; set; } = 1800;
+    public int AnimationMaxMiB { get; set; } = 64;
     public string Character { get; set; } = "chr_0013_aglina";
 
     public string FinalAction { get; set; } =
@@ -264,6 +269,16 @@ internal sealed class ModConfiguration
         text.AppendLine($"movement_speed={Number(FreeCameraMovementSpeed)}");
         text.AppendLine($"field_of_view={Number(FreeCameraFieldOfView)}");
         text.AppendLine("diagnostics=true");
+        text.AppendLine();
+        // The debugger has its own section; generic enabled/sample keys must
+        // never be flattened into another module's settings.
+        text.AppendLine();
+        text.AppendLine("[betterendfield.animation_debugger]");
+        text.AppendLine($"enabled={Boolean(AnimationDebuggerEnabled)}");
+        text.AppendLine($"sample_hz={Math.Clamp(AnimationSampleHz, 1, 120)}");
+        text.AppendLine($"refresh_hz={Math.Clamp(AnimationRefreshHz, 1, 30)}");
+        text.AppendLine($"max_seconds={Math.Clamp(AnimationMaxSeconds, 1, 1800)}");
+        text.AppendLine($"max_mib={Math.Clamp(AnimationMaxMiB, 1, 256)}");
         text.AppendLine();
         text.AppendLine("[Launcher]");
         text.AppendLine($"Language={(LocalizationService.Instance.IsChinese ? "zh_CN" : "en_US")}");

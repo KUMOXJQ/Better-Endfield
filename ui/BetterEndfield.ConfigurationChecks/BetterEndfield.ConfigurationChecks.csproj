@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../BetterEndfield.UI/Models/ModConfiguration.cs" Link="ModConfiguration.cs" />
+    <Compile Include="../BetterEndfield.UI/Services/LocalizationService.cs" Link="LocalizationService.cs" />
+    <Compile Include="../BetterEndfield.UI/Services/AnimationDebuggerConfiguration.cs" Link="AnimationDebuggerConfiguration.cs" />
+  </ItemGroup>
+</Project>
